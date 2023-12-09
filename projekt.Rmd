@@ -1,0 +1,194 @@
+---
+title: "Globaalsete majandusnäitajate analüüs"
+author: "Karl Kevin Ruul, Jekaterina Korol, Kenneth Koskinen"
+date: "09.12.2023"
+link-citations: true
+documentclass: report
+toc-title: "Sisukord"
+output: 
+  pdf_document:
+    toc: true
+---
+
+```{r, include=FALSE}
+library(dplyr)
+library(tidyr)
+library(stringr)
+```
+
+# Sissejuhatus
+
+Võttes näiteks kas õpetajad, kes soovivad suuremat palka, või autoomanikud, keda ähvardab peadpööritav maksusüsteem, on riigimajandus teema, millest ei saa ei üle ega ümber. Valitsuste üheks suurimaks ülesandeks on hoida oma riiki kursil, kus majandus õitseks, või vajadusel kurss sinnapoole suunata. Käesoleva töö eesmärgiks on uurida, kuidas on erinevate riikide majandus ajas muutunud, mis võiks potentsiaalselt olla nende muutuste taga ning kuhu suunas eri riigid suunduvad.
+
+Käsitletakse järgnevaid uuriimisküsimusi:
+
+-   Kuidas jaotuvad riigid sisemajanduse koguprodukti (SKP) järgi?
+
+-   Kas Euroopa riikide majanduskasv on olnud kiirem kui mujal?
+
+-   Millised tööstus-/majandusharud panustavad enim SKPsse?
+
+-   Milline on seos kohaliku valuuta vahetuskursi ning SKP muutuste vahel?
+
+-   Kas suurema majanduskasvuga riigid kulutavad rohkem raha kui teised?
+
+# Andmestik
+
+```{r, include=FALSE}
+indicators <- read.csv('global_economy_indicators.csv')
+colnames(indicators)
+```
+
+```{r, include=FALSE}
+country_mappings <- read.csv('country_mappings.csv')
+colnames(country_mappings)
+```
+
+```{r, include=FALSE}
+summary(indicators)
+```
+
+```{r, include=FALSE}
+min(indicators$Year)
+max(indicators$Year)
+```
+
+```{r, include=FALSE}
+unique(indicators$Country)
+length(unique(indicators$Country))
+```
+
+Andmed pärinevad *National Accounts Main Aggregates Database*[^1] nimelisest andmebaasist, mille on loonund ning mida tänaseni haldab Ühinenud Rahvaste Organisatsioon (ÜRO). Riikide (ning ka piirkondade) majandusandmeid on kogunud nii ÜRO ise kui ka mitmed erinevad statistikaalased organisastsioonid, mistõttu on tegu, nagu ka nimigi viitab, agregeeritud andmebaasiga. Andmed on iga riigi kohta aastase täpsusega, ajavahemikus 1970-2021. Antud kujul csv fail on tõmmatud Kaggle keskkonnast[^2] ning on kokku pandud Prasad Patili poolt.
+
+[^1]: *National Accounts Main Aggregates Database, <https://unstats.un.org/unsd/snaama/>.*
+
+[^2]: *Global Economy Indicators* Kaggle, <https://www.kaggle.com/datasets/prasad22/global-economy-indicators/data>.
+
+Lisaks on kasutatud ka andmeid riikide ning nende maailmajagude kohta, mis on tõmmatud sammuti Kaggle keskkonnast[^3] ning on koostatud Andrada Olteanu poolt.
+
+[^3]: Country Mapping Kaggle, <https://www.kaggle.com/datasets/andradaolteanu/country-mapping-iso-continent-region>.
+
+Kokku on andmestikus 10512 rida ning 26 tunnust 220 erineva riigi kohta. Kuna andmeid on kogutud alates 1970. aastast, siis sisaldab andmestik ka riike, mida enam ei eksisteeri, näiteks Jugoslaavia, Nõukogude Liit ning Jeemeni Araabia Vabariik. Praeguseks mitte-eksisteerivate riikide nimedele on lisatud lõppu "(Former)". Sarnaselt on sulgudes välja toodud ka muu täpsustus riikide kohta, kus ainult nimi võib olla mitmetähenduslik, näiteks Iran (Islamic Republic of) ning Sint Maarten (Dutch part).
+
+Tunnused on järgnevad:
+
+-   CountryID - riigi unikaalne identifikaator
+-   Country - riiginimi
+-   Year - aasta, mille kohta rea järgnevad andmed käivad
+-   AMA.exchange.rate - *Accounts Main Aggregate* (AMA) vahetuskurss (kohalik valuuta - USD), kombineeritud IMF ning PARE vahetuskursid.
+-   IMF.based.exchange.rate - aastakeskmine Rahvusvahelisele Valuutafondile (IMF) raporteeritud vahetuskurss (kohalik valuuta - USD)
+-   Population - populatsioon
+-   Currency - kasutatav valuuta
+-   Per.capita.GNI - sisemajanduse kogutulu inimese kohta
+-   X.Agriculture..hunting..forestry..fishing..ISIC.A.B.. - agrikultuuri, jahinduse, kalanduse panus SKPsse
+-   Changes.in.inventories - seisvate varade väärtuse muutus
+-   Construction..ISIC.F. - ehitussektori panus SKPsse
+-   Exports.of.goods.and.services - ekspordi väärtus
+-   Final.consumption.expenditure - majapidamiste, valitsuse ning majapidamisi aitavate mittetulundusühingute kulude summa
+-   General.government.final.consumption.expenditure - valitsuse kulud
+-   Gross.capital.formation - Kapitali kogumahutus põhivarasse (residentide omandatud põhivara väärtus, millest on maha arvestatud samal perioodil müüdud/likvideeritud vara)
+-   Gross.fixed.capital.formation..including.Acquisitions.less.disposals.of.valuables. - kapitali kogumahutus põhivarasse koos muude varadega (nt maavard, kunst jne)
+-   Household.consumption.expenditure..including.Non.profit.institutions.serving.households. - majapidamiste ning majapidamisi aitavate mittetulundusühingute kulude summa
+-   Imports.of.goods.and.services - toodete ning teenuste impordi summa
+-   Manufacturing..ISIC.D. - tootmissektori panus SKPsse
+-   X.Mining..Manufacturing..Utilities..ISIC.C.E.. - kaevandamis-, tootmis-, elektri-, gaasi- ning veetööstuse panus SKPsse
+-   Other.Activities..ISIC.J.P. - muude valdkondade panus SKPsse
+-   Total.Value.Added - toodetud toodete ning teenuste väärtuste summa
+-   X.Transport..storage.and.communication..ISIC.I.. - transpordi-, hoiustus- ning kommunikatsioonivaldkondade panus SKPsse
+-   X.Wholesale..retail.trade..restaurants.and.hotels..ISIC.G.H.. - jaekabanduse, restoranide ning hotellide panus SKPsse
+-   Gross.National.Income.GNI..in.USD - sisemajanduse kogutulu USA dollarites
+-   Gross.Domestic.Product..GDP. - sisemajanduse koguprodukt
+
+```{r, include=FALSE}
+# Funktsioon, mis lisab andmetabalile aastase protsentuaalse muutuse tulba
+add_annual_change_column <- function(dataframe, column) {
+  return(
+    dataframe %>%
+      arrange(Year) %>% 
+      group_by(Country) %>%
+      mutate("{{column}}.Change" := ({{column}} - lag({{column}})) / lag({{column}})) %>%
+      ungroup() %>% 
+      arrange(Country, Year)
+  )
+}
+
+indicators <- indicators %>% rename(
+  GDP = Gross.Domestic.Product..GDP.,
+  Expenditure = Final.consumption.expenditure)
+# Lisame tulba, mis näitab GDP muutust
+indicators <- add_annual_change_column(indicators, GDP)
+# Lisame tulba, mis näitab majapidamiste kulutuste muutust
+indicators <- add_annual_change_column(indicators, Expenditure)
+indicators
+```
+
+```{r, include=FALSE}
+# Lisame tulba näitamaks, kas riik on vahepeal ära lagunenud
+indicators$Country.Former <- grepl('Former', indicators$Country, fixed=TRUE)
+# Liigutame kõik sulgudes olevad täpsustused eraldi tulpa
+indicators <- indicators %>% 
+  separate(Country, into = c('Country', 'Country.Description'), sep='\\(', extra='merge') %>%
+  mutate(
+    Country.Description = gsub(')', '', Country.Description),
+    across(c(Country, Country.Description), str_squish)
+  )
+```
+
+```{r, include=FALSE}
+# Lisame indikaatorite dataframe'i maailmajao info
+
+setdiff(unique(indicators$Country), country_mappings$name)
+
+indicators <- indicators %>%
+  mutate(
+    Country = recode(
+      Country, 
+      'Bosnia and Herzegovina' = 'Bosnia And Herzegovina',
+      'China, Hong Kong SAR' = 'Hong Kong',
+      'China, Macao SAR' = 'Macao',
+      'Czechia' = 'Czech Republic',
+      'Côte d\'Ivoire' = 'Côte D\'Ivoire',
+      'D.P.R. of Korea' = 'North Korea',
+      'Lao People\'s DR' = 'Laos',
+      'Republic of Korea' = 'South Korea',
+      'Republic of Moldova' = 'Moldova',
+      'Russian Federation' = 'Russia',
+      'St. Vincent and the Grenadines' = 'Saint Vincent and the Grenadines',
+      'State of Palestine' = 'Palestine',
+      'Türkiye' = 'Turkey',
+      'U.R. of Tanzania: Mainland' = 'Tanzania',
+      'Viet Nam' = 'Vietnam',
+      'Yemen Democratic' = 'Yemen',
+      'Former Netherlands Antilles' = 'Netherlands Antilles'
+    )
+  )
+
+country_mappings <- country_mappings %>% 
+  mutate(
+    name = recode(
+      name,
+      'Virgin Islands (British)' = 'British Virgin Islands',
+      'Korea, Republic of' = 'North Korea',
+      'Congo (Democratic Republic Of The)' = 'D.R. of the Congo',
+      'Guinea Bissau' = 'Guinea-Bissau',
+      'Micronesia (Federated States of)' = 'Micronesia',
+      'Sint Maarten (Dutch part)' = 'Sint Maarten',
+      'Palestine, State of' = 'Palestine'
+    )
+  )
+
+missing_countries <- data.frame(
+  name = c('Czechoslovakia', 'Netherlands Antilles', 'Kosovo', 'North Macedonia', 'Syrian Arab Republic', 'USSR', 'Yemen Arab Republic', 'Yugoslavia', 'Zanzibar'),
+  region = c('Europe', 'Americas', 'Europe', 'Europe', 'Asia', 'Europe', 'Asia', 'Europe', 'Africa')
+)
+
+country_mappings <- bind_rows(country_mappings, missing_countries)
+
+setdiff(unique(indicators$Country), country_mappings$name)
+
+indicators <- indicators %>% 
+  left_join(
+    country_mappings %>% select(name, region) %>% mutate(Country = name, Country.Region = region), 
+    by = 'Country'
+  )
+```
