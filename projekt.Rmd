@@ -1,7 +1,8 @@
 ---
 title: "Globaalsete majandusnäitajate analüüs"
-author: "Karl Kevin Ruul, Jekaterina Korol, Kenneth Koskinen"
-date: "09.12.2023"
+subtitle: "Projekt aines Andmeanalüüs I"
+author: "Kenneth Koskinen, Karl Kevin Ruul"
+date: "Tartu 2023"
 link-citations: true
 documentclass: report
 toc-title: "Sisukord"
@@ -14,6 +15,7 @@ output:
 library(dplyr)
 library(tidyr)
 library(stringr)
+library(ggplot2)
 ```
 
 # Sissejuhatus
@@ -91,7 +93,7 @@ Tunnused on järgnevad:
 -   Household.consumption.expenditure..including.Non.profit.institutions.serving.households. - majapidamiste ning majapidamisi aitavate mittetulundusühingute kulude summa
 -   Imports.of.goods.and.services - toodete ning teenuste impordi summa
 -   Manufacturing..ISIC.D. - tootmissektori panus SKPsse
--   X.Mining..Manufacturing..Utilities..ISIC.C.E.. - kaevandamis-, tootmis-, elektri-, gaasi- ning veetööstuse panus SKPsse
+-   X.Mining..Manufacturing..Utilities..ISIC.C.E.. - kaevandus-, tootmis-, elektri-, gaasi- ning veetööstuse panus SKPsse
 -   Other.Activities..ISIC.J.P. - muude valdkondade panus SKPsse
 -   Total.Value.Added - toodetud toodete ning teenuste väärtuste summa
 -   X.Transport..storage.and.communication..ISIC.I.. - transpordi-, hoiustus- ning kommunikatsioonivaldkondade panus SKPsse
@@ -100,15 +102,22 @@ Tunnused on järgnevad:
 -   Gross.Domestic.Product..GDP. - sisemajanduse koguprodukt
 
 ```{r, include=FALSE}
+group_if_not_false <- function(dataframe, group_by) {
+  if (group_by == FALSE) {
+    return(dataframe)
+  }
+  return(dataframe %>% group_by_at(group_by))
+}
+
 # Funktsioon, mis lisab andmetabalile aastase protsentuaalse muutuse tulba
-add_annual_change_column <- function(dataframe, column) {
+add_annual_change_column <- function(dataframe, column, group_by = FALSE) {
   return(
     dataframe %>%
       arrange(Year) %>% 
-      group_by(Country) %>%
+      group_if_not_false(group_by) %>%
       mutate("{{column}}.Change" := ({{column}} - lag({{column}})) / lag({{column}})) %>%
       ungroup() %>% 
-      arrange(Country, Year)
+      arrange(group_by, Year)
   )
 }
 
@@ -116,9 +125,11 @@ indicators <- indicators %>% rename(
   GDP = Gross.Domestic.Product..GDP.,
   Expenditure = Final.consumption.expenditure)
 # Lisame tulba, mis näitab GDP muutust
-indicators <- add_annual_change_column(indicators, GDP)
+indicators <- add_annual_change_column(indicators, GDP, 'Country')
 # Lisame tulba, mis näitab majapidamiste kulutuste muutust
-indicators <- add_annual_change_column(indicators, Expenditure)
+indicators <- add_annual_change_column(indicators, Expenditure, 'Country')
+# Lisame tulba, mis näitab valuutakursi muutust
+indicators <- add_annual_change_column(indicators, AMA.exchange.rate, 'Country')
 indicators
 ```
 
@@ -192,3 +203,273 @@ indicators <- indicators %>%
     by = 'Country'
   )
 ```
+
+# Majandusharude panus SKPsse
+
+```{r, include=FALSE}
+GDP_percentages <- indicators %>% 
+  mutate(
+    X.Agriculture..hunting..forestry..fishing.Percentage = X.Agriculture..hunting..forestry..fishing..ISIC.A.B.. / GDP * 100,
+    X.Mining..Manufacturing..Utilities.Percentage = X.Mining..Manufacturing..Utilities..ISIC.C.E.. / GDP * 100,
+    X.Transport..storage.and.communication.Percentage = X.Transport..storage.and.communication..ISIC.I.. / GDP * 100,
+    X.Wholesale..retail.trade..restaurants.and.hotels.Percentage = X.Wholesale..retail.trade..restaurants.and.hotels..ISIC.G.H.. / GDP * 100,
+    X.Other.Percentage = 100 - X.Agriculture..hunting..forestry..fishing.Percentage - X.Mining..Manufacturing..Utilities.Percentage - X.Transport..storage.and.communication.Percentage - X.Wholesale..retail.trade..restaurants.and.hotels.Percentage
+  ) %>% 
+  select(
+    Year, Country, Country.Region, GDP,
+    X.Agriculture..hunting..forestry..fishing.Percentage, 
+    X.Mining..Manufacturing..Utilities.Percentage,
+    X.Transport..storage.and.communication.Percentage,
+    X.Wholesale..retail.trade..restaurants.and.hotels.Percentage,
+    X.Other.Percentage
+  ) %>% 
+  filter(
+    X.Agriculture..hunting..forestry..fishing.Percentage >= 0, 
+    X.Mining..Manufacturing..Utilities.Percentage >= 0,
+    X.Transport..storage.and.communication.Percentage >= 0,
+    X.Wholesale..retail.trade..restaurants.and.hotels.Percentage >= 0,
+    X.Other.Percentage >= 0
+  )
+
+summary(GDP_percentages)
+```
+
+```{r, include=FALSE}
+GDP_percentages_annual <- GDP_percentages %>% 
+  group_by(Year) %>% 
+  summarise(
+    X.Agriculture..hunting..forestry..fishing.Percentage.Mean = mean(X.Agriculture..hunting..forestry..fishing.Percentage),
+    X.Mining..Manufacturing..Utilities.Percentage.Mean = mean(X.Mining..Manufacturing..Utilities.Percentage),
+    X.Transport..storage.and.communication.Percentage.Mean = mean(X.Transport..storage.and.communication.Percentage),
+    X.Wholesale..retail.trade..restaurants.and.hotels.Percentage.Mean = mean(X.Wholesale..retail.trade..restaurants.and.hotels.Percentage),
+    X.Other.Percentage.Mean = mean(X.Other.Percentage)
+  ) %>% 
+  arrange(Year)
+
+GDP_percentages_annual_change <- add_annual_change_column(GDP_percentages_annual, X.Agriculture..hunting..forestry..fishing.Percentage.Mean)
+GDP_percentages_annual_change <- add_annual_change_column(GDP_percentages_annual_change, X.Mining..Manufacturing..Utilities.Percentage.Mean)
+GDP_percentages_annual_change <- add_annual_change_column(GDP_percentages_annual_change, X.Transport..storage.and.communication.Percentage.Mean)
+GDP_percentages_annual_change <- add_annual_change_column(GDP_percentages_annual_change, X.Wholesale..retail.trade..restaurants.and.hotels.Percentage.Mean)
+GDP_percentages_annual_change <- add_annual_change_column(GDP_percentages_annual_change, X.Other.Percentage.Mean)
+
+summary(GDP_percentages_annual_change)
+```
+
+Kui uurida, kuidas panustavad erinevad majandusharud riikide sisemajanduse koguprodukti, on andmestikus välja toodud kategooriatest vaadeldaval perioodil näha selget langustrendi agrikultuuri, jahinduse ning metsanduse kategoorias, kukkudes 18,53 protsendilt 10,18 protsendile, keskmiselt 0,0106% aastas (joonis x). Lisaks on kerge langustrend ka nii kaevandus-, tootmis-, elektri-, gaasi- ning veetööstuse kui ka jaekaubanduse, hotellide ning restoranide kategooriates, keskmiselt vastavalt -0,0017% ja -0.0014% aastas. Selge kasv on toimunud aga kategoriseerimata, ehk muude sektorite panuses, tõustes 37,25 protsendilt 47,46 protsendile. Eraldi väljatoodud harudest on puudu näiteks infotehnoloogia, mis vaatluse all olevatel aastatel on teinud majandustähtsuselt väga suure hüppe ning võib mängida suurt rolli selles tõusutrendis.
+
+```{r, echo=FALSE}
+GDP_percentages_annual %>% 
+  rename(
+    'Agrikultuur, jahindus, metsandus' = X.Agriculture..hunting..forestry..fishing.Percentage.Mean,
+    'Kaevandus-, tootmis-, elektri-, gaasi- ning veetööstus' = X.Mining..Manufacturing..Utilities.Percentage.Mean,
+    'Transport, hoiustus- ning kommunikatsioonivaldkonnad' = X.Transport..storage.and.communication.Percentage.Mean,
+    'Jaekabandus, hotellid, restoranid' = X.Wholesale..retail.trade..restaurants.and.hotels.Percentage.Mean,
+    'Muu' = X.Other.Percentage.Mean
+  ) %>% 
+  pivot_longer(cols=!Year) %>% 
+  ggplot(aes(x=Year, y=value)) + 
+  geom_line(aes(color=name)) + 
+  ggtitle('Majandusharude osakaal SKPst aastate kaupa') +
+  xlab('Aasta') +
+  ylab('Majandusharu osakaal SKPst') + 
+  scale_color_discrete(name='Majandusharud') + 
+  theme(legend.position='bottom', plot.title=element_text(hjust=0.5, margin=margin(b=30))) +
+  guides(colour = guide_legend(nrow = 5))
+```
+
+Joonis x. Majandusharude osakaal SKPst aastate kaupa.
+
+```{r, include=FALSE}
+GDP_percentages_annual_region <- GDP_percentages %>% 
+  group_by(Country.Region, Year) %>% 
+  summarise(
+    X.Agriculture..hunting..forestry..fishing.Percentage.Mean = mean(X.Agriculture..hunting..forestry..fishing.Percentage),
+    X.Mining..Manufacturing..Utilities.Percentage.Mean = mean(X.Mining..Manufacturing..Utilities.Percentage),
+    X.Transport..storage.and.communication.Percentage.Mean = mean(X.Transport..storage.and.communication.Percentage),
+    X.Wholesale..retail.trade..restaurants.and.hotels.Percentage.Mean = mean(X.Wholesale..retail.trade..restaurants.and.hotels.Percentage),
+    X.Other.Percentage.Mean = mean(X.Other.Percentage)
+  ) %>% 
+  arrange(Year)
+
+GDP_percentages_annual_region_change <- add_annual_change_column(GDP_percentages_annual_region, X.Agriculture..hunting..forestry..fishing.Percentage.Mean)
+GDP_percentages_annual_region_change <- add_annual_change_column(GDP_percentages_annual_region_change, X.Mining..Manufacturing..Utilities.Percentage.Mean)
+GDP_percentages_annual_region_change <- add_annual_change_column(GDP_percentages_annual_region_change, X.Transport..storage.and.communication.Percentage.Mean)
+GDP_percentages_annual_region_change <- add_annual_change_column(GDP_percentages_annual_region_change, X.Wholesale..retail.trade..restaurants.and.hotels.Percentage.Mean)
+GDP_percentages_annual_region_change <- add_annual_change_column(GDP_percentages_annual_region_change, X.Other.Percentage.Mean)
+
+summary(GDP_percentages_annual_region_change)
+```
+
+```{r, include=FALSE}
+GDP_percentages_annual_change_africa <- GDP_percentages_annual_region_change %>% 
+  select(
+    Country.Region, 
+    Year,
+    X.Agriculture..hunting..forestry..fishing.Percentage.Mean.Change,
+    X.Mining..Manufacturing..Utilities.Percentage.Mean.Change,
+    X.Transport..storage.and.communication.Percentage.Mean.Change,
+    X.Wholesale..retail.trade..restaurants.and.hotels.Percentage.Mean.Change,
+    X.Other.Percentage.Mean.Change
+  ) %>% 
+  filter(Year != '1970') %>% 
+  mutate(Country.Region.Africa = Country.Region == 'Africa') %>% 
+  group_by(Year, Country.Region.Africa) %>% 
+   summarise(
+    X.Agriculture..hunting..forestry..fishing.Percentage.Mean.Change = mean(X.Agriculture..hunting..forestry..fishing.Percentage.Mean.Change),
+    X.Mining..Manufacturing..Utilities.Percentage.Mean.Change = mean(X.Mining..Manufacturing..Utilities.Percentage.Mean.Change),
+    X.Transport..storage.and.communication.Percentage.Mean.Change = mean(X.Transport..storage.and.communication.Percentage.Mean.Change),
+    X.Wholesale..retail.trade..restaurants.and.hotels.Percentage.Mean.Change = mean(X.Wholesale..retail.trade..restaurants.and.hotels.Percentage.Mean.Change),
+    X.Other.Percentage.Mean.Change = mean(X.Other.Percentage.Mean.Change)
+  )
+
+GDP_percentages_annual_change_rest = GDP_percentages_annual_change_africa %>% 
+  filter(Country.Region.Africa == FALSE)
+GDP_percentages_annual_change_africa = GDP_percentages_annual_change_africa %>% 
+  filter(Country.Region.Africa == TRUE)
+```
+
+```{r, include=FALSE}
+t.test(
+  GDP_percentages_annual_change_africa$X.Agriculture..hunting..forestry..fishing.Percentage.Mean.Change,
+  GDP_percentages_annual_change_rest$X.Agriculture..hunting..forestry..fishing.Percentage.Mean.Change
+)
+```
+
+```{r, include=FALSE}
+t.test(
+  GDP_percentages_annual_change_africa$X.Mining..Manufacturing..Utilities.Percentage.Mean.Change,
+  GDP_percentages_annual_change_rest$X.Mining..Manufacturing..Utilities.Percentage.Mean.Change
+)
+```
+
+```{r, include=FALSE}
+t.test(
+  GDP_percentages_annual_change_africa$X.Transport..storage.and.communication.Percentage.Mean.Change,
+  GDP_percentages_annual_change_rest$X.Transport..storage.and.communication.Percentage.Mean.Change
+)
+```
+
+```{r, include=FALSE}
+t.test(
+  GDP_percentages_annual_change_africa$X.Wholesale..retail.trade..restaurants.and.hotels.Percentage.Mean.Change,
+  GDP_percentages_annual_change_rest$X.Wholesale..retail.trade..restaurants.and.hotels.Percentage.Mean.Change
+)
+```
+
+```{r, include=FALSE}
+t.test(
+  GDP_percentages_annual_change_africa$X.Other.Percentage.Mean.Change,
+  GDP_percentages_annual_change_rest$X.Other.Percentage.Mean.Change
+)
+```
+
+Vaadates muutusi maailmajagude kaupa, on näha, et Aafrikas on kategooriate osakaalud püsinud üpris sarnased, suurimad muutused on toimunud Euroopas ning Ameerikas, kus on enim tõusnud kategoriseerimata sektorite panus ning langenud kaevandus-, tootmis-, elektri-, gaasi- ning veetööstuste ja agrikultuuri, jahinduse ning metsanduse osakaalud (joonis x). Viies läbi t-testid, mis võrdlevad kategooriate kaupa muutusi Aafrika ning ülejäänud maailma vahel, selgub, et 95% usaldusintervalli juures on ainukeseks kategooriaks, mille muutuse võib samaväärseks lugeda, agrikultuur, jahindus ning metsandus (p-väärtus 0.1133), mis võimendab veelgi eelnevalt välja toodud fakti, et antud majandusharu on ülemaailmselt langustrendis. Ülejäänud kategooriate puhul võib aga Aafrika trendid lugeda ülejäänud maailmaga võrreldes erinevaks.
+
+```{r, echo=FALSE}
+GDP_percentages_annual_region %>% 
+  rename(
+    'Agrikultuur, jahindus, metsandus' = X.Agriculture..hunting..forestry..fishing.Percentage.Mean,
+    'Kaevandus-, tootmis-, elektri-, gaasi- ning veetööstus' = X.Mining..Manufacturing..Utilities.Percentage.Mean,
+    'Transport, hoiustus- ning kommunikatsioonivaldkonnad' = X.Transport..storage.and.communication.Percentage.Mean,
+    'Jaekabandus, hotellid, restoranid' = X.Wholesale..retail.trade..restaurants.and.hotels.Percentage.Mean,
+    'Muu' = X.Other.Percentage.Mean
+  ) %>% 
+  pivot_longer(cols=!c(Year, Country.Region)) %>% 
+  ggplot(aes(x=Year, y=value)) + 
+  geom_line(aes(color=name)) + 
+  facet_grid(rows=vars(Country.Region)) + 
+  ggtitle('Majandusharude osakaal SKPst aastate ning maailmajagude kaupa') +
+  xlab('Aasta') +
+  ylab('Majandusharu osakaal SKPst') + 
+  scale_color_discrete(name='Majandusharud') + 
+  theme(legend.position='right', plot.title=element_text(margin=margin(b=30)))
+```
+
+Joonis x. Majandusharude osakaal SKPst aastate ning maailmajagude kaupa.
+
+# Sisemajanduse koguprodukti seos valuutakursi ning riigi kulutustega
+
+Loogiline on eeldada, et valuutakurss USA dollari suhtes sõltub lisaks riigi majandusnäitajatel veel ka paljudest poliitilistest ja muudest teguritest. Lisaks ei ole SKP kaugeltki mitte ainus majanduslik indikaator näitamaks, kuidas riigil läheb. Seetõttu saame sisemajanduse koguprodukti ning valuutakursi vahelist seost uurides võtta nullhüpoteesiks, et nendevaheline korrelatsioon on 0, alternatiivseks hüpoteesiks, et korrelatsioon erineb nullist. Pearsoni meetodit ning 95% usaldusintervalli kasutades saame vastuseks, et nii see tõesti ka on. Korrelatsioon nende vahel on -0,0018 ning p-väärtus 0,8559, ehk võima enesekindlalt jääda nullhüpoteesi juurde (tabel 1).
+
+Tabel 1. Pearsoni korrelatsioonitest SKP ning valuutakursi vahel.
+
+```{r, echo=FALSE}
+cor.test(
+  indicators$GDP,
+  indicators$AMA.exchange.rate
+)
+```
+
+Samas võib argumenteerida, et üks muutus nii keerukas süsteemis nagu seda on maailmamajandus ei saagi omada kohest mõju teistele faktoritele ning võib juhtuda, et SKP kasvult edukas aasta kajastub valuutakursis hilisemalt. Seega võib leida ka seost ühe aasta sisemajanduse koguprodukti ning sellele järgneva aasta valuutakursi vahel. Kasutades samu hüpoteese ning usaldusintervalli nagu varemgi, selgub, et nende kahe näitaja vaheline seos on statistiliselt oluline: korrelatsioon on 0,0542 ning p-väärtus $2,62*10^{-8}$. Seega võib järeldada, et SKP poolest edukas aasta tugevdab antud riigi valuutakurssi järgneval aastal.
+
+Tabel 2. Pearsoni korrelatsioonitest SKP ning järgneva aasta valuutakursi vahel.
+
+```{r, echo=FALSE}
+cor.test(
+  lag(indicators$GDP),
+  indicators$AMA.exchange.rate
+)
+```
+
+```{r, include=FALSE}
+cor.test(
+  indicators$GDP,
+  indicators$Expenditure
+)
+
+cor.test(
+  indicators$GDP,
+  indicators$Expenditure,
+  method='kendall'
+)
+
+cor.test(
+  indicators$GDP,
+  indicators$Expenditure,
+  method='spearman'
+)
+
+cor.test(
+  indicators$GDP,
+  indicators$General.government.final.consumption.expenditure,
+)
+
+cor.test(
+  indicators$GDP,
+  indicators$Household.consumption.expenditure..including.Non.profit.institutions.serving.households.
+)
+```
+
+Sisemajanduse koguprodukti arvutamisel on muuhulgas faktoriteks nii valitsuse kui ka majapidamiste kulutused. Seega saab ratsionaalselt järeldada, et mida suuremad on kulutused, seda suurem on SKP. Seda kinnitab ka korrelatsioonitest, saades Kendalli meetodil korrelatsiooniks 0,9463, Pearsoni meetodil 0,9899 ning Spearmani meetodil tervenisti 0,9945. Küll aga on huvitav tähele panna, et valitsuse ning majapidamiste kulutused ei mõju SKPle samaväärselt. Mõlema seos sisemajanduse koguproduktiga on väga suur, küll aga on nende korrelatsioonide 95% usaldusintervallid vastavalt (0,9902; 0,9909) ning (0,9826; 0,9832). Seega, kuigi vahed on küll relatiivselt väga väikesed, saab väita, et valitsuse suuremad väljaminekud mõjutavad SKPd rohkem kui majapidamiste suuremad väljaminekud.
+
+Kui vaadata, kuidas mõjutab SKP muutus järgneva aasta kulutuste muutust (eeldusel, et SKP tõus viib järgneval aastal suurtemate kulutusteni), selgub, et pilt on üsna hägune, hajuvusdiagrammilt ei ole võimalik välja lugeda kindlat lineaarset seost (joonis x). Küll aga võttes nullhüpoteesiks, et kahe muutuja seos on suurem või võrdne nulliga, alternatiivseks seevastu, et seos on alla nulli, saame p-väärtuseks ühe (korrelatsiooniga 0,21) ning jääme siiski nullhüpoteesi juurde ja saame tõepoolest väita algselt mainitud eeldust, et suurem SKP muutus viib suurema kulutuste muutuseni.
+
+```{r, include=FALSE}
+cor.test(
+  indicators$Expenditure.Change,
+  lag(indicators$GDP.Change),
+  alternative='less'
+)
+```
+
+```{r, echo=FALSE, warning=FALSE}
+indicators %>% 
+  ggplot(aes(x=Expenditure.Change, y=lag(GDP.Change))) +
+  geom_point(shape=1) +
+  ggtitle('Seos SKP muutuse ning järgneva aasta kulutuste muutuse vahel') +
+  theme(plot.title=element_text(hjust=0.5, margin=margin(b=30))) +
+  xlab('Kulutuste muutus') +
+  ylab('SKP muutus')
+```
+
+Joonis x. Seos SKP muutuse ning järgneva aasta kulutuste muutuse vahel.
+
+# Kokkuvõte
+
+Andmestikust tuleb välja, et vaadeldaval perioodil on oluliselt muutunud erinevate majandusharude ja -kategooriate osakaal SKPs. Suurima languse on teinud agrikultuuri, jahinduse ning metsanduse kategooria, kukkudes 18,53 protsendilt 10,18 protsendile. Kergemas langustrendis on veel nii kaevandus-, tootmis-, elektri-, gaasi- ning veetööstuse kui ka jaekaubanduse, hotellide ning restoranide kategooriad. Selge kasv on toimunud aga kategoriseerimata, ehk muude sektorite panuses, tõustes 37,25 protsendilt 47,46 protsendile, seda tõenäoliselt infotehnoloogia arengu arvelt.
+
+Vahe on märgata ka majandusharude panuse vahes maailmajagude kaupa. Kõige stabiilsem seis on püsinud Aafrikas, kus vaid üks kategooria viiest ühtib statistiliselt ülejäänud maailma trendiga. Kõige suurema hüppe kategoriseerimata kategooriates on teinud Euroopa ning Ameerika.
+
+Kuigi SKP ning sama aasta valuutakurss ei oma omavahel statistiliselt olulist seost, siis on lugu teine SKP ja järgneva aasta valuutakursi puhul. Nende vaheline korrelatsioon on küll nõrk (0,0542), kuid p-väärtus väga väike, millest võib järeldada, et SKP poolest edukas aasta tugevdab antud riigi valuutakurssi järgneval aastal.
+
+Saab ka väita, et suurem SKP muutus viib suurema kulutuste muutuseni. Nimelt on ühe aasta SKP muutuse ning järgneva aasta kulutuste vaheline korrelatsioon 0,21 ning seades nullhüpoteesiks, et kahe muutuja seos on suurem või võrdne nulliga, jääme selle juurde.
